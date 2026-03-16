@@ -9,6 +9,8 @@ import { SignupForm } from "@/components/signup-form"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
+const PENDING_SIGNUP_STORAGE_KEY = "pending-signup"
+
 function AuthLoadingScreen({ label }: { label: string }) {
   return (
     <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-6 py-10">
@@ -63,7 +65,27 @@ function TenantRedirect() {
     setIsEnsuringTenant(true)
     setError(null)
 
-    void ensureCurrentUserTenant({})
+    const pendingSignupRaw = window.sessionStorage.getItem(
+      PENDING_SIGNUP_STORAGE_KEY
+    )
+    let pendingSignup: { avatarBlobId?: string | null } | null = null
+
+    try {
+      pendingSignup = pendingSignupRaw
+        ? (JSON.parse(pendingSignupRaw) as { avatarBlobId?: string | null })
+        : null
+    } catch {
+      window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY)
+    }
+
+    void ensureCurrentUserTenant({
+      avatarBlobId: pendingSignup?.avatarBlobId ?? undefined,
+    })
+      .then(() => {
+        if (pendingSignupRaw) {
+          window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY)
+        }
+      })
       .catch((err) => {
         setError(
           err instanceof Error
@@ -126,7 +148,12 @@ function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
 function IssuePage({
   tenant,
 }: {
-  tenant: { name: string; slug: string; role: "owner" | "member" }
+  tenant: {
+    name: string
+    slug: string
+    role: "owner" | "member"
+    avatarUrl?: string | null
+  }
 }) {
   const { signOut } = useAuthActions()
   const [isSigningOut, setIsSigningOut] = useState(false)
@@ -160,6 +187,29 @@ function IssuePage({
           </CardHeader>
           <CardContent className="grid gap-8 py-6 md:grid-cols-[1.35fr_0.9fr]">
             <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex size-16 items-center justify-center overflow-hidden rounded-full border border-border/70 bg-muted/50">
+                  {tenant.avatarUrl ? (
+                    <img
+                      src={tenant.avatarUrl}
+                      alt={`${tenant.name} avatar`}
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+                      No Avatar
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] tracking-[0.3em] text-muted-foreground uppercase">
+                    Team Avatar
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Stored and served through ConvexFS.
+                  </p>
+                </div>
+              </div>
               <p className="text-sm leading-6 text-muted-foreground">
                 Every authenticated route now sits under the tenant slug. The
                 root route resolves your current session, provisions a tenant if
