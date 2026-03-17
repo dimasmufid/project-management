@@ -46,7 +46,6 @@ function TenantRedirect() {
     api.tenants.ensureCurrentUserTenant
   )
   const [error, setError] = useState<string | null>(null)
-  const [isEnsuringTenant, setIsEnsuringTenant] = useState(false)
   const hasAttemptedProvision = useRef(false)
 
   useEffect(() => {
@@ -59,8 +58,6 @@ function TenantRedirect() {
     }
 
     hasAttemptedProvision.current = true
-    setIsEnsuringTenant(true)
-    setError(null)
 
     void ensureCurrentUserTenant({})
       .catch((err) => {
@@ -70,12 +67,9 @@ function TenantRedirect() {
             : "Unable to provision a tenant for this account."
         )
       })
-      .finally(() => {
-        setIsEnsuringTenant(false)
-      })
   }, [tenant, ensureCurrentUserTenant])
 
-  if (tenant === undefined || isEnsuringTenant) {
+  if (tenant === undefined) {
     return (
       <AuthLoadingScreen label="Resolving the tenant workspace for this session." />
     )

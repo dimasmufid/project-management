@@ -454,24 +454,30 @@ function NewIssueDialog({
   const [cycleId, setCycleId] = useState<string>("none")
   const [assigneeId, setAssigneeId] = useState<string>("none")
 
-  useEffect(() => {
-    if (!open) {
-      setTitle("")
-      setStatusId(backlogStatus.id)
-      setPriority("medium")
-      setProjectId("none")
-      setMilestoneId("none")
-      setCycleId("none")
-      setAssigneeId("none")
+  const resetForm = () => {
+    setTitle("")
+    setStatusId(backlogStatus.id)
+    setPriority("medium")
+    setProjectId("none")
+    setMilestoneId("none")
+    setCycleId("none")
+    setAssigneeId("none")
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      resetForm()
     }
-  }, [backlogStatus.id, open])
+
+    onOpenChange(nextOpen)
+  }
 
   const projectMilestones = milestones.filter((milestone) =>
     projectId === "none" ? true : milestone.projectId === projectId
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>New issue</DialogTitle>
@@ -580,7 +586,7 @@ function NewIssueDialog({
                 assigneeId: assigneeId === "none" ? null : assigneeId,
                 creatorId: currentMemberId,
               })
-              onOpenChange(false)
+              handleOpenChange(false)
             }}
           >
             Create issue
@@ -608,16 +614,22 @@ function NewProjectDialog({
   const [description, setDescription] = useState("")
   const [targetDate, setTargetDate] = useState("")
 
-  useEffect(() => {
-    if (!open) {
-      setName("")
-      setDescription("")
-      setTargetDate("")
+  const resetForm = () => {
+    setName("")
+    setDescription("")
+    setTargetDate("")
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      resetForm()
     }
-  }, [open])
+
+    onOpenChange(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
@@ -656,7 +668,7 @@ function NewProjectDialog({
                 description,
                 targetDate: new Date(targetDate).toISOString(),
               })
-              onOpenChange(false)
+              handleOpenChange(false)
             }}
           >
             Create project
@@ -687,16 +699,22 @@ function NewMilestoneDialog({
   const [name, setName] = useState("")
   const [targetDate, setTargetDate] = useState("")
 
-  useEffect(() => {
-    if (!open) {
-      setProjectId(firstProject)
-      setName("")
-      setTargetDate("")
+  const resetForm = () => {
+    setProjectId(firstProject)
+    setName("")
+    setTargetDate("")
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      resetForm()
     }
-  }, [firstProject, open])
+
+    onOpenChange(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>New milestone</DialogTitle>
@@ -737,7 +755,7 @@ function NewMilestoneDialog({
                 name,
                 targetDate: new Date(targetDate).toISOString(),
               })
-              onOpenChange(false)
+              handleOpenChange(false)
             }}
           >
             Create milestone
@@ -805,16 +823,20 @@ function CloseCycleDialog({
   canceledCount: number
   onConfirm: (issueIds: string[]) => void
 }) {
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+    incompleteIssues.map((issue) => issue.id)
+  )
 
-  useEffect(() => {
-    if (open) {
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
       setSelectedIds(incompleteIssues.map((issue) => issue.id))
     }
-  }, [incompleteIssues, open])
+
+    onOpenChange(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Close cycle {cycle.number}</DialogTitle>
@@ -879,7 +901,7 @@ function CloseCycleDialog({
             type="button"
             onClick={() => {
               onConfirm(selectedIds)
-              onOpenChange(false)
+              handleOpenChange(false)
             }}
           >
             Close cycle
@@ -1454,19 +1476,7 @@ function ProjectsView({
 
 function IssueDetailDialog({
   issue,
-  open,
-  onOpenChange,
-  members,
-  statuses,
-  projects,
-  milestones,
-  cycles,
-  comments,
-  onUpdateIssue,
-  onArchiveIssue,
-  onAddComment,
-  onUpdateComment,
-  onDeleteComment,
+  ...props
 }: {
   issue: WorkspaceIssue | null
   open: boolean
@@ -1483,21 +1493,52 @@ function IssueDetailDialog({
   onUpdateComment: (commentId: string, body: string) => void
   onDeleteComment: (commentId: string) => void
 }) {
-  const [titleDraft, setTitleDraft] = useState("")
-  const [descriptionDraft, setDescriptionDraft] = useState("")
+  if (!issue) {
+    return null
+  }
+
+  return <IssueDetailDialogContent key={issue.id} issue={issue} {...props} />
+}
+
+function IssueDetailDialogContent({
+  issue,
+  open,
+  onOpenChange,
+  members,
+  statuses,
+  projects,
+  milestones,
+  cycles,
+  comments,
+  onUpdateIssue,
+  onArchiveIssue,
+  onAddComment,
+  onUpdateComment,
+  onDeleteComment,
+}: {
+  issue: WorkspaceIssue
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  members: WorkspaceMember[]
+  statuses: IssueStatus[]
+  projects: WorkspaceProject[]
+  milestones: WorkspaceMilestone[]
+  cycles: WorkspaceCycle[]
+  comments: WorkspaceComment[]
+  onUpdateIssue: (issueId: string, patch: Partial<WorkspaceIssue>) => void
+  onArchiveIssue: (issueId: string) => void
+  onAddComment: (issueId: string, userId: string, body: string) => void
+  onUpdateComment: (commentId: string, body: string) => void
+  onDeleteComment: (commentId: string) => void
+}) {
+  const [titleDraft, setTitleDraft] = useState(issue.title)
+  const [descriptionDraft, setDescriptionDraft] = useState(issue.description)
   const [descriptionTab, setDescriptionTab] = useState<"write" | "preview">("write")
   const [commentDraft, setCommentDraft] = useState("")
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
 
   useEffect(() => {
-    setTitleDraft(issue?.title ?? "")
-    setDescriptionDraft(issue?.description ?? "")
-    setCommentDraft("")
-    setEditingCommentId(null)
-  }, [issue?.id])
-
-  useEffect(() => {
-    if (!issue || descriptionDraft === issue.description) {
+    if (descriptionDraft === issue.description) {
       return
     }
 
@@ -1507,10 +1548,6 @@ function IssueDetailDialog({
 
     return () => window.clearTimeout(timeout)
   }, [descriptionDraft, issue, onUpdateIssue])
-
-  if (!issue) {
-    return null
-  }
 
   const memberOptions = [
     { value: "none", label: "Unassigned" },
@@ -1898,7 +1935,10 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
   const section = getSection(location.pathname, tenant.slug)
   const issues = workspace.issues.filter((issue) => !issue.deletedAt)
   const startedStatus = workspace.statuses.find((status) => status.type === "unstarted")
-  const projectById = new Map(workspace.projects.map((project) => [project.id, project]))
+  const projectById = useMemo(
+    () => new Map(workspace.projects.map((project) => [project.id, project])),
+    [workspace.projects]
+  )
   const selectedIssue =
     issues.find((issue) => issue.id === selectedIssueId) ?? null
   const selectedIssueComments = workspace.comments
