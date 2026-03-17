@@ -1,7 +1,5 @@
-import { useAuthActions } from "@convex-dev/auth/react"
 import {
   RiAddLine,
-  RiArrowRightLine,
   RiCalendarLine,
   RiChat3Line,
   RiDeleteBin6Line,
@@ -12,7 +10,6 @@ import {
   RiListCheck3,
   RiLoopLeftLine,
   RiPencilLine,
-  RiRoadMapLine,
 } from "@remixicon/react"
 import {
   startTransition,
@@ -21,11 +18,11 @@ import {
   useMemo,
   useState,
 } from "react"
-import { NavLink, useLocation } from "react-router-dom"
+import { useOutletContext } from "react-router-dom"
 import { format, isAfter, parseISO } from "date-fns"
 
 import { MarkdownPreview } from "@/features/workspace/markdown-preview"
-import { useWorkspaceState } from "@/features/workspace/use-workspace-state"
+import type { WorkspaceLayoutContext } from "@/features/workspace/workspace-layout"
 import type {
   IssueStatus,
   WorkspaceComment,
@@ -34,11 +31,11 @@ import type {
   WorkspaceMember,
   WorkspaceMilestone,
   WorkspaceProject,
-  WorkspaceTenant,
 } from "@/features/workspace/types"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   Card,
   CardContent,
@@ -58,30 +55,17 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  SidebarSeparator,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
 import {
   Table,
   TableBody,
@@ -139,11 +123,6 @@ const CYCLE_STATUS_LABELS: Record<WorkspaceCycle["status"], string> = {
   closed: "Closed",
 }
 
-const ROLE_LABELS: Record<WorkspaceTenant["role"], string> = {
-  owner: "Owner",
-  member: "Member",
-}
-
 function formatDate(value?: string | null, pattern = "MMM d") {
   if (!value) {
     return "Backlog"
@@ -152,19 +131,22 @@ function formatDate(value?: string | null, pattern = "MMM d") {
   return format(parseISO(value), pattern)
 }
 
-function getSection(pathname: string, tenantSlug: string): SectionKey {
-  const path = pathname.replace(`/${tenantSlug}`, "")
-  const [section] = path.split("/").filter(Boolean)
-
-  if (section === "cycles") {
-    return "cycles"
+function parseDateValue(value: string) {
+  if (!value) {
+    return undefined
   }
 
-  if (section === "projects") {
-    return "projects"
+  const [year, month, day] = value.split("-").map(Number)
+
+  if (!year || !month || !day) {
+    return undefined
   }
 
-  return "issues"
+  return new Date(year, month - 1, day)
+}
+
+function formatDateValue(value: Date) {
+  return format(value, "yyyy-MM-dd")
 }
 
 function getStatusTone(status: IssueStatus) {
@@ -256,172 +238,51 @@ function MarkdownToolbarButton({
   )
 }
 
-function WorkspaceSidebar({
-  tenant,
-  section,
-  currentCycle,
-  openCount,
-  backlogCount,
-  projectCount,
-  onSignOut,
-  isSigningOut,
+function DatePickerField({
+  value,
+  onChange,
+  placeholder,
+  label,
 }: {
-  tenant: WorkspaceTenant
-  section: SectionKey
-  currentCycle: WorkspaceCycle | null
-  openCount: number
-  backlogCount: number
-  projectCount: number
-  onSignOut: () => Promise<void>
-  isSigningOut: boolean
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  label: string
 }) {
-  const navItems = [
-    {
-      key: "issues" as const,
-      label: "Issues",
-      href: `/${tenant.slug}/issues`,
-      icon: RiListCheck3,
-      count: openCount,
-    },
-    {
-      key: "cycles" as const,
-      label: "Cycles",
-      href: `/${tenant.slug}/cycles`,
-      icon: RiLoopLeftLine,
-      count: currentCycle ? currentCycle.number : 0,
-    },
-    {
-      key: "projects" as const,
-      label: "Projects",
-      href: `/${tenant.slug}/projects`,
-      icon: RiRoadMapLine,
-      count: projectCount,
-    },
-  ]
+  const [open, setOpen] = useState(false)
+  const selectedDate = parseDateValue(value)
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader className="gap-3 border-b border-sidebar-border px-3 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center border border-sidebar-border bg-sidebar-accent font-semibold">
-            {tenant.name.slice(0, 2).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-xs font-semibold">{tenant.name}</div>
-            <div className="text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/60">
-              {ROLE_LABELS[tenant.role]}
-            </div>
-          </div>
-        </div>
-        <div className="border border-sidebar-border bg-sidebar-accent/60 p-2 text-[11px] text-sidebar-foreground/75">
-          Current cycle: {currentCycle ? `#${currentCycle.number}` : "No cycle"}
-        </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navItems.map((item) => {
-                const Icon = item.icon
-
-                return (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton
-                      render={<NavLink to={item.href} />}
-                      isActive={section === item.key}
-                      tooltip={item.label}
-                    >
-                      <Icon />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                    <SidebarMenuBadge>{item.count}</SidebarMenuBadge>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarSeparator />
-        <SidebarGroup>
-          <SidebarGroupLabel>Cycle focus</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <div className="mx-2 space-y-3 border border-sidebar-border bg-sidebar-accent/40 p-3 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sidebar-foreground/70">Window</span>
-                <span>
-                  {currentCycle
-                    ? `${formatDate(currentCycle.startsAt)} - ${formatDate(currentCycle.endsAt)}`
-                    : "Unset"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sidebar-foreground/70">Backlog</span>
-                <span>{backlogCount} issues</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sidebar-foreground/70">Open work</span>
-                <span>{openCount} issues</span>
-              </div>
-            </div>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border px-3 py-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="w-full justify-between"
-          onClick={() => void onSignOut()}
-          disabled={isSigningOut}
+    <div className="grid gap-1">
+      <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+        {label}
+      </div>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          className={cn(
+            buttonVariants({ variant: "outline" }),
+            "w-full justify-between font-normal",
+            !selectedDate && "text-muted-foreground"
+          )}
         >
-          <span>{isSigningOut ? "Signing out..." : "Sign out"}</span>
-          <RiArrowRightLine />
-        </Button>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
-  )
-}
+          <span>{selectedDate ? format(selectedDate, "MMM d, yyyy") : placeholder}</span>
+          <RiCalendarLine />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-0">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(date) => {
+              if (!date) {
+                return
+              }
 
-function WorkspaceHeader({
-  tenant,
-  section,
-  currentCycle,
-}: {
-  tenant: WorkspaceTenant
-  section: SectionKey
-  currentCycle: WorkspaceCycle | null
-}) {
-  const title =
-    section === "cycles"
-      ? "Cycles"
-      : section === "projects"
-        ? "Projects"
-        : "Issues"
-
-  return (
-    <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-2">
-        <SidebarTrigger />
-        <div className="h-4 w-px bg-border" />
-        <div>
-          <div className="text-xs font-semibold">{tenant.name}</div>
-          <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-            {title}
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {currentCycle ? (
-          <Badge variant="outline" className="gap-1">
-            <RiCalendarLine />
-            Cycle {currentCycle.number}
-          </Badge>
-        ) : null}
-        <Badge variant="outline">Tenant: /{tenant.slug}</Badge>
-      </div>
+              onChange(formatDateValue(date))
+              setOpen(false)
+            }}
+          />
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
@@ -663,10 +524,11 @@ function NewProjectDialog({
             rows={5}
             placeholder="Project description"
           />
-          <Input
-            type="date"
+          <DatePickerField
+            label="Target date"
             value={targetDate}
-            onChange={(event) => setTargetDate(event.target.value)}
+            onChange={setTargetDate}
+            placeholder="Pick a target date"
           />
         </div>
         <DialogFooter>
@@ -750,10 +612,11 @@ function NewMilestoneDialog({
             onChange={(event) => setName(event.target.value)}
             placeholder="Milestone name"
           />
-          <Input
-            type="date"
+          <DatePickerField
+            label="Target date"
             value={targetDate}
-            onChange={(event) => setTargetDate(event.target.value)}
+            onChange={setTargetDate}
+            placeholder="Pick a milestone date"
           />
         </div>
         <DialogFooter>
@@ -1978,14 +1841,11 @@ function IssueDetailDialogContent({
   )
 }
 
-export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
-  const { signOut } = useAuthActions()
-  const location = useLocation()
+export function WorkspacePage({ section }: { section: SectionKey }) {
   const {
     workspace,
     currentCycle,
     statusById,
-    isLoading,
     createIssue,
     updateIssue,
     archiveIssue,
@@ -1996,8 +1856,7 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
     updateComment,
     deleteComment,
     closeCycle,
-  } = useWorkspaceState(tenant.slug)
-  const [isSigningOut, setIsSigningOut] = useState(false)
+  } = useOutletContext<WorkspaceLayoutContext>()
   const [newIssueOpen, setNewIssueOpen] = useState(false)
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [newMilestoneOpen, setNewMilestoneOpen] = useState(false)
@@ -2008,21 +1867,20 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
   const [sortKey, setSortKey] = useState<SortKey>("updated")
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
-  const section = getSection(location.pathname, tenant.slug)
   const issues = useMemo(
-    () => workspace?.issues.filter((issue) => !issue.deletedAt) ?? [],
-    [workspace?.issues]
+    () => workspace.issues.filter((issue) => !issue.deletedAt),
+    [workspace.issues]
   )
-  const startedStatus = workspace?.statuses.find(
+  const startedStatus = workspace.statuses.find(
     (status) => status.type === "unstarted"
   )
   const projectById = useMemo(
-    () => new Map((workspace?.projects ?? []).map((project) => [project.id, project])),
-    [workspace?.projects]
+    () => new Map(workspace.projects.map((project) => [project.id, project])),
+    [workspace.projects]
   )
   const selectedIssue =
     issues.find((issue) => issue.id === selectedIssueId) ?? null
-  const selectedIssueComments = (workspace?.comments ?? [])
+  const selectedIssueComments = workspace.comments
     .filter((comment) => comment.issueId === selectedIssueId)
     .sort(
       (left, right) =>
@@ -2069,31 +1927,11 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
     })
   }, [currentCycle?.id, deferredSearch, issueScope, issues, projectById, sortKey])
 
-  if (isLoading || !workspace) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-background px-6 py-10">
-        <Card className="w-full max-w-md border border-border/70">
-          <CardHeader>
-            <CardTitle>Preparing workspace</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Bootstrapping statuses, cycles, and workspace data.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   const openIssuesCount = issues.filter((issue) => {
     const type = statusById.get(issue.statusId)?.type
     return type !== "completed" && type !== "canceled"
   }).length
   const backlogCount = issues.filter((issue) => !issue.cycleId).length
-  const activeProjectCount = workspace.projects.filter(
-    (project) => !project.archivedAt
-  ).length
   const currentCycleIssues = currentCycle
     ? issues.filter((issue) => issue.cycleId === currentCycle.id)
     : []
@@ -2108,32 +1946,9 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
     return type !== "completed" && type !== "canceled"
   })
 
-  const handleSignOut = async () => {
-    setIsSigningOut(true)
-
-    try {
-      await signOut()
-    } finally {
-      setIsSigningOut(false)
-    }
-  }
-
   return (
-    <SidebarProvider defaultOpen>
-      <WorkspaceSidebar
-        tenant={tenant}
-        section={section}
-        currentCycle={currentCycle}
-        openCount={openIssuesCount}
-        backlogCount={backlogCount}
-        projectCount={activeProjectCount}
-        onSignOut={handleSignOut}
-        isSigningOut={isSigningOut}
-      />
-      <SidebarInset className="min-h-svh bg-background">
-        <WorkspaceHeader tenant={tenant} section={section} currentCycle={currentCycle} />
-
-        {section === "issues" ? (
+    <>
+      {section === "issues" ? (
           <>
             <SectionHeader
               title="Issues"
@@ -2282,9 +2097,9 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
               </Card>
             </div>
           </>
-        ) : null}
+      ) : null}
 
-        {section === "cycles" && currentCycle ? (
+      {section === "cycles" && currentCycle ? (
           <>
             <SectionHeader
               title="Cycles"
@@ -2322,9 +2137,9 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
               onCloseCycle={() => setCloseCycleOpen(true)}
             />
           </>
-        ) : null}
+      ) : null}
 
-        {section === "projects" ? (
+      {section === "projects" ? (
           <>
             <SectionHeader
               title="Projects and milestones"
@@ -2354,68 +2169,67 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
               onArchiveProject={archiveProject}
             />
           </>
-        ) : null}
+      ) : null}
 
-        <NewIssueDialog
-          open={newIssueOpen}
-          onOpenChange={setNewIssueOpen}
-          members={workspace.members}
-          projects={workspace.projects}
-          milestones={workspace.milestones}
-          cycles={workspace.cycles}
-          statuses={workspace.statuses}
-          onCreate={createIssue}
+      <NewIssueDialog
+        open={newIssueOpen}
+        onOpenChange={setNewIssueOpen}
+        members={workspace.members}
+        projects={workspace.projects}
+        milestones={workspace.milestones}
+        cycles={workspace.cycles}
+        statuses={workspace.statuses}
+        onCreate={createIssue}
+      />
+
+      <NewProjectDialog
+        open={newProjectOpen}
+        onOpenChange={setNewProjectOpen}
+        onCreate={createProject}
+      />
+
+      <NewMilestoneDialog
+        open={newMilestoneOpen}
+        onOpenChange={setNewMilestoneOpen}
+        projects={workspace.projects}
+        onCreate={createMilestone}
+      />
+
+      {currentCycle ? (
+        <CloseCycleDialog
+          open={closeCycleOpen}
+          onOpenChange={setCloseCycleOpen}
+          cycle={currentCycle}
+          incompleteIssues={currentCycleIncomplete}
+          completedCount={currentCycleCompletedCount}
+          canceledCount={currentCycleCanceledCount}
+          onConfirm={(issueIds) =>
+            closeCycle({ cycleId: currentCycle.id, carryOverIssueIds: issueIds })
+          }
         />
+      ) : null}
 
-        <NewProjectDialog
-          open={newProjectOpen}
-          onOpenChange={setNewProjectOpen}
-          onCreate={createProject}
-        />
-
-        <NewMilestoneDialog
-          open={newMilestoneOpen}
-          onOpenChange={setNewMilestoneOpen}
-          projects={workspace.projects}
-          onCreate={createMilestone}
-        />
-
-        {currentCycle ? (
-          <CloseCycleDialog
-            open={closeCycleOpen}
-            onOpenChange={setCloseCycleOpen}
-            cycle={currentCycle}
-            incompleteIssues={currentCycleIncomplete}
-            completedCount={currentCycleCompletedCount}
-            canceledCount={currentCycleCanceledCount}
-            onConfirm={(issueIds) =>
-              closeCycle({ cycleId: currentCycle.id, carryOverIssueIds: issueIds })
-            }
-          />
-        ) : null}
-
-        <IssueDetailDialog
-          issue={selectedIssue}
-          open={Boolean(selectedIssue)}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedIssueId(null)
-            }
-          }}
-          members={workspace.members}
-          statuses={workspace.statuses}
-          projects={workspace.projects}
-          milestones={workspace.milestones}
-          cycles={workspace.cycles}
-          comments={selectedIssueComments}
-          currentUserId={workspace.currentUserId}
-          onUpdateIssue={updateIssue}
-          onArchiveIssue={archiveIssue}
-          onAddComment={addComment}
-          onUpdateComment={updateComment}
-          onDeleteComment={deleteComment}
-        />
-      </SidebarInset>
-    </SidebarProvider>
+      <IssueDetailDialog
+        issue={selectedIssue}
+        open={Boolean(selectedIssue)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedIssueId(null)
+          }
+        }}
+        members={workspace.members}
+        statuses={workspace.statuses}
+        projects={workspace.projects}
+        milestones={workspace.milestones}
+        cycles={workspace.cycles}
+        comments={selectedIssueComments}
+        currentUserId={workspace.currentUserId}
+        onUpdateIssue={updateIssue}
+        onArchiveIssue={archiveIssue}
+        onAddComment={addComment}
+        onUpdateComment={updateComment}
+        onDeleteComment={deleteComment}
+      />
+    </>
   )
 }

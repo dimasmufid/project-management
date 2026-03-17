@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from "react"
 import { useConvexAuth, useMutation, useQuery } from "convex/react"
-import { Navigate, Route, Routes, useParams } from "react-router-dom"
+import {
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useOutletContext,
+  useParams,
+} from "react-router-dom"
 
 import { api } from "../convex/_generated/api"
 import { WorkspacePage } from "@/features/workspace/workspace-page"
+import { WorkspaceLayout } from "@/features/workspace/workspace-layout"
+import type { WorkspaceTenant } from "@/features/workspace/types"
 import { LoginForm } from "@/components/login-form"
 import { SignupForm } from "@/components/signup-form"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -139,7 +148,17 @@ function TenantWorkspaceRoute() {
     return <TenantRedirect />
   }
 
-  return <WorkspacePage tenant={tenant} />
+  return <Outlet context={{ tenant }} />
+}
+
+function WorkspaceShellRoute({
+  section,
+}: {
+  section: "issues" | "cycles" | "projects"
+}) {
+  const { tenant } = useOutletContext<{ tenant: WorkspaceTenant }>()
+
+  return <WorkspaceLayout tenant={tenant} section={section} />
 }
 
 export function App() {
@@ -170,7 +189,19 @@ export function App() {
           </PublicOnlyRoute>
         }
       />
-      <Route path="/:tenantSlug/*" element={<TenantWorkspaceRoute />} />
+      <Route path="/:tenantSlug" element={<TenantWorkspaceRoute />}>
+        <Route index element={<Navigate to="issues" replace />} />
+        <Route element={<WorkspaceShellRoute section="issues" />}>
+          <Route path="issues" element={<WorkspacePage section="issues" />} />
+        </Route>
+        <Route element={<WorkspaceShellRoute section="cycles" />}>
+          <Route path="cycles" element={<WorkspacePage section="cycles" />} />
+        </Route>
+        <Route element={<WorkspaceShellRoute section="projects" />}>
+          <Route path="projects" element={<WorkspacePage section="projects" />} />
+        </Route>
+        <Route path="*" element={<Navigate to="issues" replace />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
