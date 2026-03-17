@@ -22,8 +22,178 @@ import {
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-const MAX_AVATAR_BYTES = 4 * 1024 * 1024
-const PENDING_SIGNUP_STORAGE_KEY = "pending-signup"
+const MAX_AVATAR_UPLOAD_BYTES = 10 * 1024 * 1024
+const MAX_AVATAR_STORAGE_BYTES = 512 * 1024
+const TARGET_AVATAR_BYTES = 256 * 1024
+const MAX_AVATAR_DIMENSION = 1024
+const AVATAR_SCALE_STEP = 0.85
+const AVATAR_QUALITY_STEPS = [0.86, 0.78, 0.7, 0.62, 0.54, 0.46]
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Unable to read avatar image."))
+        return
+      }
+
+      resolve(reader.result)
+    }
+
+    reader.onerror = () => {
+      reject(new Error("Unable to read avatar image."))
+    }
+
+    reader.readAsDataURL(file)
+  })
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Unable to process avatar image."))
+        return
+      }
+
+      resolve(reader.result)
+    }
+
+    reader.onerror = () => {
+      reject(new Error("Unable to process avatar image."))
+    }
+
+    reader.readAsDataURL(blob)
+  })
+}
+
+function loadImageFromFile(file: File) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve(image)
+    }
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error("Unable to load avatar image."))
+    }
+
+    image.src = objectUrl
+  })
+}
+
+function blobToCanvasDataUrl(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number
+) {
+  return new Promise<string>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Unable to compress avatar image."))
+          return
+        }
+
+        void readBlobAsDataUrl(blob).then(resolve).catch(reject)
+      },
+      type,
+      quality
+    )
+  })
+}
+
+function getDataUrlByteLength(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(",")
+
+  if (commaIndex === -1) {
+    return 0
+  }
+
+  const base64 = dataUrl.slice(commaIndex + 1)
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0
+
+  return Math.ceil((base64.length * 3) / 4) - padding
+}
+
+function getAvatarOutputType(file: File) {
+  if (file.type === "image/png" || file.type === "image/webp") {
+    return "image/webp"
+  }
+
+  return "image/jpeg"
+}
+
+async function preprocessAvatar(file: File) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Avatar must be an image file.")
+  }
+
+  if (file.size > MAX_AVATAR_UPLOAD_BYTES) {
+    throw new Error("Avatar must be 10MB or smaller before processing.")
+  }
+
+  const image = await loadImageFromFile(file)
+  const outputType = getAvatarOutputType(file)
+  const canvas = document.createElement("canvas")
+  const context = canvas.getContext("2d")
+
+  if (!context) {
+    throw new Error("Unable to process avatar image.")
+  }
+
+  const largestDimension = Math.max(image.naturalWidth, image.naturalHeight)
+  const baseScale =
+    largestDimension > MAX_AVATAR_DIMENSION
+      ? MAX_AVATAR_DIMENSION / largestDimension
+      : 1
+
+  let bestResult: string | null = null
+  let bestResultBytes = Number.POSITIVE_INFINITY
+  let scale = baseScale
+
+  for (let resizeAttempt = 0; resizeAttempt < 6; resizeAttempt += 1) {
+    const width = Math.max(1, Math.round(image.naturalWidth * scale))
+    const height = Math.max(1, Math.round(image.naturalHeight * scale))
+
+    canvas.width = width
+    canvas.height = height
+    context.clearRect(0, 0, width, height)
+    context.drawImage(image, 0, 0, width, height)
+
+    for (const quality of AVATAR_QUALITY_STEPS) {
+      const dataUrl = await blobToCanvasDataUrl(canvas, outputType, quality)
+      const byteLength = getDataUrlByteLength(dataUrl)
+
+      if (byteLength < bestResultBytes) {
+        bestResult = dataUrl
+        bestResultBytes = byteLength
+      }
+
+      if (byteLength <= TARGET_AVATAR_BYTES) {
+        return dataUrl
+      }
+    }
+
+    scale *= AVATAR_SCALE_STEP
+  }
+
+  if (bestResult && bestResultBytes <= MAX_AVATAR_STORAGE_BYTES) {
+    return bestResult
+  }
+
+  throw new Error(
+    "Avatar is still too large after compression. Please choose a simpler image."
+  )
+}
 
 export function SignupForm({
   className,
@@ -45,6 +215,7 @@ export function SignupForm({
 
   const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
+    setError(null)
 
     setAvatarPreview((currentPreview) => {
       if (currentPreview) {
@@ -85,54 +256,28 @@ export function SignupForm({
     }
 
     const avatarFile = formData.get("avatar")
-    let avatarBlobId: string | null = null
+    let avatarDataUrl: string | undefined
 
     setIsSubmitting(true)
 
     try {
       if (avatarFile instanceof File && avatarFile.size > 0) {
-        if (!import.meta.env.VITE_CONVEX_SITE_URL) {
-          throw new Error("Missing VITE_CONVEX_SITE_URL for avatar uploads.")
-        }
-
         if (!avatarFile.type.startsWith("image/")) {
           throw new Error("Avatar must be an image file.")
         }
 
-        if (avatarFile.size > MAX_AVATAR_BYTES) {
-          throw new Error("Avatar must be 4MB or smaller.")
+        if (avatarFile.size > MAX_AVATAR_UPLOAD_BYTES) {
+          throw new Error("Avatar must be 10MB or smaller before processing.")
         }
 
-        const uploadResponse = await fetch(
-          `${import.meta.env.VITE_CONVEX_SITE_URL}/fs/upload`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": avatarFile.type || "application/octet-stream",
-            },
-            body: avatarFile,
-          }
-        )
+        avatarDataUrl =
+          avatarFile.size <= TARGET_AVATAR_BYTES
+            ? await readFileAsDataUrl(avatarFile)
+            : await preprocessAvatar(avatarFile)
 
-        if (!uploadResponse.ok) {
-          throw new Error("Unable to upload avatar.")
+        if (getDataUrlByteLength(avatarDataUrl) > MAX_AVATAR_STORAGE_BYTES) {
+          avatarDataUrl = await preprocessAvatar(avatarFile)
         }
-
-        const uploadPayload = (await uploadResponse.json()) as {
-          blobId?: string
-        }
-
-        if (!uploadPayload.blobId) {
-          throw new Error("Avatar upload did not return a blob id.")
-        }
-
-        avatarBlobId = uploadPayload.blobId
-        window.sessionStorage.setItem(
-          PENDING_SIGNUP_STORAGE_KEY,
-          JSON.stringify({ avatarBlobId })
-        )
-      } else {
-        window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY)
       }
 
       await signIn("password", {
@@ -140,9 +285,9 @@ export function SignupForm({
         name: typeof name === "string" ? name : "",
         email: typeof email === "string" ? email : "",
         password: typeof password === "string" ? password : "",
+        ...(avatarDataUrl ? { image: avatarDataUrl } : {}),
       })
     } catch (err) {
-      window.sessionStorage.removeItem(PENDING_SIGNUP_STORAGE_KEY)
       setError(
         err instanceof Error ? err.message : "Unable to create the account."
       )
@@ -209,6 +354,9 @@ export function SignupForm({
                       onChange={handleAvatarChange}
                       className="block w-full text-xs file:mr-2 file:rounded-none file:border-0 file:bg-transparent file:px-0 file:py-1 file:text-xs file:font-medium file:text-foreground"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Large images are resized and compressed automatically.
+                    </p>
                   </div>
                 </div>
               </Field>
