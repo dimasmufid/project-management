@@ -1,0 +1,30 @@
+name: Vercel Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  VERCEL_ORG_ID: team_4XTIEHOEq1AZPhhV8T9aYMKt
+  VERCEL_PROJECT_ID: prj_02ImH2L0HgqI4fnIE6o2Sy9m3wEy
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install --global vercel@latest
+
+      - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - run: vercel deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}

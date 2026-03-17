@@ -46,3 +46,23 @@ Vercel production:
 If you want Vercel builds to push Convex automatically instead of deploying
 Convex from your machine, add `CONVEX_DEPLOY_KEY` in Vercel from the Convex
 dashboard and use `npm run deploy:prod` as the Vercel build command.
+
+## GitHub to Vercel CI/CD
+
+This repo now includes GitHub Actions for Vercel:
+
+- `.github/workflows/vercel-preview.yml` deploys preview builds for pull requests.
+- `.github/workflows/vercel-production.yml` deploys production on pushes to `main`.
+- `vercel.json` locks the Vercel build to `bun run build`, publishes `dist`, and rewrites SPA routes to `index.html`.
+
+GitHub still needs one repository secret:
+
+- `VERCEL_TOKEN`
+
+The workflow already contains the current Vercel org and project IDs from the
+linked project, so no extra GitHub variables are required.
+
+Vercel also needs both `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` defined for
+both `Production` and `Preview` environments. Production was already present; if
+you keep preview deployments on the same Convex backend for now, mirror those
+same values into `Preview`.
