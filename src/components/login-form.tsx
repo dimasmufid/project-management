@@ -1,17 +1,18 @@
 import { useAuthActions } from "@convex-dev/auth/react"
 import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Field,
   FieldDescription,
-  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getAuthErrorMessage } from "@/lib/auth-error"
 import { cn } from "@/lib/utils"
 
 export function LoginForm({
@@ -19,12 +20,10 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const { signIn } = useAuthActions()
-  const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError(null)
     setIsSubmitting(true)
 
     const formData = new FormData(event.currentTarget)
@@ -38,9 +37,9 @@ export function LoginForm({
         password: typeof password === "string" ? password : "",
       })
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to sign in right now."
-      )
+      toast.error("Sign-in failed", {
+        description: getAuthErrorMessage(err, "signIn"),
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -79,7 +78,6 @@ export function LoginForm({
                   required
                 />
               </Field>
-              {error ? <FieldError>{error}</FieldError> : null}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Signing in..." : "Login"}

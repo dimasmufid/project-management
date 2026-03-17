@@ -97,7 +97,7 @@ runCommand("bun build", "bun", [
   "--asset-naming",
   "assets/[name]-[hash].[ext]",
   "--public-path",
-  "./",
+  "/",
 ])
 
 if (existsSync(publicDir)) {
@@ -118,14 +118,14 @@ writeFileSync(
     '<html lang="en">',
     "  <head>",
     '    <meta charset="UTF-8" />',
-    '    <link rel="icon" type="image/svg+xml" href="./vite.svg" />',
+    '    <link rel="icon" type="image/svg+xml" href="/vite.svg" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
     `    <title>${title}</title>`,
-    '    <link rel="stylesheet" crossorigin href="./assets/main.css" />',
+    '    <link rel="stylesheet" crossorigin href="/assets/main.css" />',
     "  </head>",
     "  <body>",
     '    <div id="root"></div>',
-    '    <script type="module" crossorigin src="./assets/main.js"></script>',
+    '    <script type="module" crossorigin src="/assets/main.js"></script>',
     "  </body>",
     "</html>",
     "",

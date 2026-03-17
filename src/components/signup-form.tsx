@@ -9,17 +9,18 @@ import {
   type FormEvent,
 } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Field,
   FieldDescription,
-  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { getAuthErrorMessage } from "@/lib/auth-error"
 import { cn } from "@/lib/utils"
 
 const MAX_AVATAR_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -201,7 +202,6 @@ export function SignupForm({
 }: React.ComponentProps<"div">) {
   const { signIn } = useAuthActions()
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
@@ -215,7 +215,6 @@ export function SignupForm({
 
   const handleAvatarChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
-    setError(null)
 
     setAvatarPreview((currentPreview) => {
       if (currentPreview) {
@@ -242,7 +241,6 @@ export function SignupForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError(null)
 
     const formData = new FormData(event.currentTarget)
     const name = formData.get("name")
@@ -251,7 +249,9 @@ export function SignupForm({
     const confirmPassword = formData.get("confirmPassword")
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.")
+      toast.error("Check your password", {
+        description: "Your password and confirmation need to match.",
+      })
       return
     }
 
@@ -288,9 +288,9 @@ export function SignupForm({
         ...(avatarDataUrl ? { image: avatarDataUrl } : {}),
       })
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to create the account."
-      )
+      toast.error("Sign-up failed", {
+        description: getAuthErrorMessage(err, "signUp"),
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -400,7 +400,6 @@ export function SignupForm({
                   Password requires at least 8 characters.
                 </FieldDescription>
               </Field>
-              {error ? <FieldError>{error}</FieldError> : null}
               <Field>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? "Creating account..." : "Create Account"}
