@@ -2,22 +2,27 @@
 
 ## Local development
 
-`npm run dev` now starts the Vite app against the Convex production deployment
-using the Convex CLI:
+Default local frontend dev uses `.env.local`:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
-This runs `convex deploy` first, then starts `vite` with
+If you want the normal Convex dev deployment workflow, run:
+
+```bash
+bun run convex:dev
+bun run dev
+```
+
+If you want local frontend dev against the Convex production deployment, use:
+
+```bash
+bun run dev:prod
+```
+
+That runs `convex deploy` first, then starts `vite` with
 `VITE_CONVEX_URL` injected from the production deployment.
-
-If you want the old local/dev-deployment workflow, use:
-
-```bash
-npm run convex:dev
-npm run dev:local
-```
 
 The local auth deployment also needs `SITE_URL`, `JWT_PRIVATE_KEY`, and `JWKS`.
 Those are now configured for the current dev deployment.
