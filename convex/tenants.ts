@@ -3,6 +3,10 @@ import { v } from "convex/values"
 
 import type { MutationCtx, QueryCtx } from "./_generated/server"
 import { mutation, query } from "./_generated/server"
+import {
+  buildIssuePrefix,
+  ensureWorkspaceBootstrap,
+} from "./workspaceBootstrap"
 
 function toTeamName(name: string | undefined) {
   const trimmed = name?.trim()
@@ -109,6 +113,9 @@ export const ensureCurrentUserTenant = mutation({
         slug,
         ownerUserId: userId,
         createdAt,
+        cycleLengthDays: 7,
+        issueCounter: 0,
+        issuePrefix: buildIssuePrefix(slug),
       })
 
       await ctx.db.insert("tenantMembers", {
@@ -124,6 +131,12 @@ export const ensureCurrentUserTenant = mutation({
         slug,
         role: "owner" as const,
         avatarUrl: null,
+      }
+
+      const tenantDoc = await ctx.db.get(tenantId)
+
+      if (tenantDoc) {
+        await ensureWorkspaceBootstrap(ctx, tenantDoc)
       }
     }
 

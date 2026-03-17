@@ -1,4 +1,7 @@
+import type { Id } from "../../../convex/_generated/dataModel"
+
 export type WorkspaceTenant = {
+  tenantId: Id<"tenants">
   name: string
   slug: string
   role: "owner" | "member"
@@ -6,7 +9,7 @@ export type WorkspaceTenant = {
 }
 
 export type WorkspaceMember = {
-  id: string
+  id: Id<"users">
   name: string
   initials: string
 }
@@ -28,14 +31,14 @@ export type StatusType =
   | "canceled"
 
 export type IssueStatus = {
-  id: string
+  id: Id<"statuses">
   name: string
   type: StatusType
   order: number
 }
 
 export type WorkspaceProject = {
-  id: string
+  id: Id<"projects">
   name: string
   description: string
   status: ProjectStatus
@@ -46,8 +49,8 @@ export type WorkspaceProject = {
 }
 
 export type WorkspaceMilestone = {
-  id: string
-  projectId: string
+  id: Id<"milestones">
+  projectId: Id<"projects">
   name: string
   targetDate: string
   status: MilestoneStatus
@@ -56,7 +59,7 @@ export type WorkspaceMilestone = {
 export type CycleStatus = "upcoming" | "current" | "closed"
 
 export type WorkspaceCycle = {
-  id: string
+  id: Id<"cycles">
   number: number
   startsAt: string
   endsAt: string
@@ -66,32 +69,32 @@ export type WorkspaceCycle = {
 }
 
 export type WorkspaceComment = {
-  id: string
-  issueId: string
-  userId: string
+  id: Id<"comments">
+  issueId: Id<"issues">
+  userId: Id<"users">
   body: string
   createdAt: string
   updatedAt?: string | null
 }
 
 export type CycleMove = {
-  fromCycleId: string
-  toCycleId: string
+  fromCycleId: Id<"cycles">
+  toCycleId: Id<"cycles">
   movedAt: string
 }
 
 export type WorkspaceIssue = {
-  id: string
+  id: Id<"issues">
   identifier: string
   title: string
   description: string
-  statusId: string
+  statusId: Id<"statuses">
   priority: "urgent" | "high" | "medium" | "low"
-  projectId?: string | null
-  milestoneId?: string | null
-  cycleId?: string | null
-  assigneeId?: string | null
-  creatorId: string
+  projectId?: Id<"projects"> | null
+  milestoneId?: Id<"milestones"> | null
+  cycleId?: Id<"cycles"> | null
+  assigneeId?: Id<"users"> | null
+  creatorId: Id<"users">
   createdAt: string
   updatedAt: string
   completedAt?: string | null
@@ -100,6 +103,7 @@ export type WorkspaceIssue = {
 }
 
 export type WorkspaceData = {
+  currentUserId: Id<"users">
   issueSequence: number
   cycleLengthDays: number
   members: WorkspaceMember[]

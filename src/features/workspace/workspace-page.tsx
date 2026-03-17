@@ -133,6 +133,17 @@ const MILESTONE_STATUS_LABELS: Record<WorkspaceMilestone["status"], string> = {
   done: "Done",
 }
 
+const CYCLE_STATUS_LABELS: Record<WorkspaceCycle["status"], string> = {
+  upcoming: "Upcoming",
+  current: "Current",
+  closed: "Closed",
+}
+
+const ROLE_LABELS: Record<WorkspaceTenant["role"], string> = {
+  owner: "Owner",
+  member: "Member",
+}
+
 function formatDate(value?: string | null, pattern = "MMM d") {
   if (!value) {
     return "Backlog"
@@ -298,7 +309,7 @@ function WorkspaceSidebar({
           <div className="min-w-0">
             <div className="truncate text-xs font-semibold">{tenant.name}</div>
             <div className="text-[11px] uppercase tracking-[0.24em] text-sidebar-foreground/60">
-              {tenant.role}
+              {ROLE_LABELS[tenant.role]}
             </div>
           </div>
         </div>
@@ -423,7 +434,6 @@ function NewIssueDialog({
   milestones,
   cycles,
   statuses,
-  currentMemberId,
   onCreate,
 }: {
   open: boolean
@@ -433,21 +443,19 @@ function NewIssueDialog({
   milestones: WorkspaceMilestone[]
   cycles: WorkspaceCycle[]
   statuses: IssueStatus[]
-  currentMemberId: string
   onCreate: (values: {
     title: string
-    statusId: string
+    statusId: IssueStatus["id"]
     priority: WorkspaceIssue["priority"]
-    projectId?: string | null
-    milestoneId?: string | null
-    cycleId?: string | null
-    assigneeId?: string | null
-    creatorId: string
+    projectId?: WorkspaceProject["id"] | null
+    milestoneId?: WorkspaceMilestone["id"] | null
+    cycleId?: WorkspaceCycle["id"] | null
+    assigneeId?: WorkspaceMember["id"] | null
   }) => void
 }) {
   const backlogStatus = statuses.find((status) => status.type === "backlog") ?? statuses[0]
   const [title, setTitle] = useState("")
-  const [statusId, setStatusId] = useState(backlogStatus.id)
+  const [statusId, setStatusId] = useState<string>(backlogStatus.id)
   const [priority, setPriority] = useState<WorkspaceIssue["priority"]>("medium")
   const [projectId, setProjectId] = useState<string>("none")
   const [milestoneId, setMilestoneId] = useState<string>("none")
@@ -550,7 +558,7 @@ function NewIssueDialog({
                 { value: "none", label: "Backlog" },
                 ...cycles.map((cycle) => ({
                   value: cycle.id,
-                  label: `Cycle ${cycle.number} (${cycle.status})`,
+                  label: `Cycle ${cycle.number} (${CYCLE_STATUS_LABELS[cycle.status]})`,
                 })),
               ]}
             />
@@ -578,13 +586,19 @@ function NewIssueDialog({
 
               onCreate({
                 title,
-                statusId,
+                statusId: statusId as IssueStatus["id"],
                 priority,
-                projectId: projectId === "none" ? null : projectId,
-                milestoneId: milestoneId === "none" ? null : milestoneId,
-                cycleId: cycleId === "none" ? null : cycleId,
-                assigneeId: assigneeId === "none" ? null : assigneeId,
-                creatorId: currentMemberId,
+                projectId:
+                  projectId === "none" ? null : (projectId as WorkspaceProject["id"]),
+                milestoneId:
+                  milestoneId === "none"
+                    ? null
+                    : (milestoneId as WorkspaceMilestone["id"]),
+                cycleId: cycleId === "none" ? null : (cycleId as WorkspaceCycle["id"]),
+                assigneeId:
+                  assigneeId === "none"
+                    ? null
+                    : (assigneeId as WorkspaceMember["id"]),
               })
               handleOpenChange(false)
             }}
@@ -689,13 +703,13 @@ function NewMilestoneDialog({
   onOpenChange: (open: boolean) => void
   projects: WorkspaceProject[]
   onCreate: (values: {
-    projectId: string
+    projectId: WorkspaceProject["id"]
     name: string
     targetDate: string
   }) => void
 }) {
   const firstProject = projects.find((project) => !project.archivedAt)?.id ?? "none"
-  const [projectId, setProjectId] = useState(firstProject)
+  const [projectId, setProjectId] = useState<string>(firstProject)
   const [name, setName] = useState("")
   const [targetDate, setTargetDate] = useState("")
 
@@ -751,7 +765,7 @@ function NewMilestoneDialog({
               }
 
               onCreate({
-                projectId,
+                projectId: projectId as WorkspaceProject["id"],
                 name,
                 targetDate: new Date(targetDate).toISOString(),
               })
@@ -779,6 +793,8 @@ function InlineSelect({
   options: Array<{ value: string; label: string }>
   disabled?: boolean
 }) {
+  const selectedOption = options.find((option) => option.value === value)
+
   return (
     <div className="grid gap-1">
       {label ? <div className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{label}</div> : null}
@@ -792,7 +808,7 @@ function InlineSelect({
         disabled={disabled}
       >
         <SelectTrigger className="w-full">
-          <SelectValue />
+          <SelectValue>{selectedOption?.label ?? value}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
@@ -821,9 +837,9 @@ function CloseCycleDialog({
   incompleteIssues: WorkspaceIssue[]
   completedCount: number
   canceledCount: number
-  onConfirm: (issueIds: string[]) => void
+  onConfirm: (issueIds: WorkspaceIssue["id"][]) => void
 }) {
-  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+  const [selectedIds, setSelectedIds] = useState<WorkspaceIssue["id"][]>(() =>
     incompleteIssues.map((issue) => issue.id)
   )
 
@@ -928,10 +944,19 @@ function IssueListView({
   members: WorkspaceMember[]
   projects: WorkspaceProject[]
   cycles: WorkspaceCycle[]
-  onStatusChange: (issueId: string, statusId: string) => void
-  onProjectChange: (issueId: string, projectId: string | null) => void
-  onCycleChange: (issueId: string, cycleId: string | null) => void
-  onOpenIssue: (issueId: string) => void
+  onStatusChange: (
+    issueId: WorkspaceIssue["id"],
+    statusId: IssueStatus["id"]
+  ) => void
+  onProjectChange: (
+    issueId: WorkspaceIssue["id"],
+    projectId: WorkspaceProject["id"] | null
+  ) => void
+  onCycleChange: (
+    issueId: WorkspaceIssue["id"],
+    cycleId: WorkspaceCycle["id"] | null
+  ) => void
+  onOpenIssue: (issueId: WorkspaceIssue["id"]) => void
 }) {
   const statusById = new Map(statuses.map((status) => [status.id, status]))
   const projectById = new Map(projects.map((project) => [project.id, project]))
@@ -976,7 +1001,9 @@ function IssueListView({
               <TableCell>
                 <InlineSelect
                   value={issue.statusId}
-                  onValueChange={(value) => onStatusChange(issue.id, value)}
+                  onValueChange={(value) =>
+                    onStatusChange(issue.id, value as IssueStatus["id"])
+                  }
                   options={statuses.map((status) => ({
                     value: status.id,
                     label: status.name,
@@ -987,7 +1014,10 @@ function IssueListView({
                 <InlineSelect
                   value={issue.projectId ?? "none"}
                   onValueChange={(value) =>
-                    onProjectChange(issue.id, value === "none" ? null : value)
+                    onProjectChange(
+                      issue.id,
+                      value === "none" ? null : (value as WorkspaceProject["id"])
+                    )
                   }
                   options={[
                     { value: "none", label: "No project" },
@@ -1004,7 +1034,10 @@ function IssueListView({
                 <InlineSelect
                   value={issue.cycleId ?? "none"}
                   onValueChange={(value) =>
-                    onCycleChange(issue.id, value === "none" ? null : value)
+                    onCycleChange(
+                      issue.id,
+                      value === "none" ? null : (value as WorkspaceCycle["id"])
+                    )
                   }
                   options={[
                     { value: "none", label: "Backlog" },
@@ -1027,8 +1060,8 @@ function IssueListView({
                   {" · "}
                   {issue.projectId
                     ? projectById.get(issue.projectId)?.name ?? "No project"
-                    : cycleById.get(issue.cycleId ?? "")?.number
-                      ? `Cycle ${cycleById.get(issue.cycleId ?? "")?.number}`
+                    : issue.cycleId && cycleById.get(issue.cycleId)?.number
+                      ? `Cycle ${cycleById.get(issue.cycleId)?.number}`
                       : "Backlog"}
                 </div>
               </TableCell>
@@ -1052,10 +1085,13 @@ function IssueBoardView({
   statuses: IssueStatus[]
   projects: WorkspaceProject[]
   cycles: WorkspaceCycle[]
-  onDropIssue: (issueId: string, statusId: string) => void
-  onOpenIssue: (issueId: string) => void
+  onDropIssue: (
+    issueId: WorkspaceIssue["id"],
+    statusId: IssueStatus["id"]
+  ) => void
+  onOpenIssue: (issueId: WorkspaceIssue["id"]) => void
 }) {
-  const [dragIssueId, setDragIssueId] = useState<string | null>(null)
+  const [dragIssueId, setDragIssueId] = useState<WorkspaceIssue["id"] | null>(null)
   const projectById = new Map(projects.map((project) => [project.id, project]))
   const cycleById = new Map(cycles.map((cycle) => [cycle.id, cycle]))
 
@@ -1148,7 +1184,10 @@ function CyclesView({
   issues: WorkspaceIssue[]
   statuses: IssueStatus[]
   members: WorkspaceMember[]
-  onPlanIssue: (issueId: string, assigneeId: string | null) => void
+  onPlanIssue: (
+    issueId: WorkspaceIssue["id"],
+    assigneeId: WorkspaceMember["id"] | null
+  ) => void
   onCloseCycle: () => void
 }) {
   const statusById = new Map(statuses.map((status) => [status.id, status]))
@@ -1270,7 +1309,10 @@ function CyclesView({
                   <InlineSelect
                     value={issue.assigneeId ?? "none"}
                     onValueChange={(value) =>
-                      onPlanIssue(issue.id, value === "none" ? null : value)
+                      onPlanIssue(
+                        issue.id,
+                        value === "none" ? null : (value as WorkspaceMember["id"])
+                      )
                     }
                     options={[
                       { value: "none", label: "Unassigned" },
@@ -1309,7 +1351,9 @@ function CyclesView({
               <div key={cycle.id} className="border border-border bg-background p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-medium">Cycle {cycle.number}</div>
-                  <Badge variant="outline">{cycle.status}</Badge>
+                  <Badge variant="outline">
+                    {CYCLE_STATUS_LABELS[cycle.status]}
+                  </Badge>
                 </div>
                 <div className="mt-1 text-muted-foreground">
                   {formatDate(cycle.startsAt)} - {formatDate(cycle.endsAt)}
@@ -1344,7 +1388,7 @@ function ProjectsView({
   milestones: WorkspaceMilestone[]
   issues: WorkspaceIssue[]
   statuses: IssueStatus[]
-  onArchiveProject: (projectId: string) => void
+  onArchiveProject: (projectId: WorkspaceProject["id"]) => void
 }) {
   const statusById = new Map(statuses.map((status) => [status.id, status]))
   const activeProjects = projects.filter((project) => !project.archivedAt)
@@ -1487,11 +1531,19 @@ function IssueDetailDialog({
   milestones: WorkspaceMilestone[]
   cycles: WorkspaceCycle[]
   comments: WorkspaceComment[]
-  onUpdateIssue: (issueId: string, patch: Partial<WorkspaceIssue>) => void
-  onArchiveIssue: (issueId: string) => void
-  onAddComment: (issueId: string, userId: string, body: string) => void
-  onUpdateComment: (commentId: string, body: string) => void
-  onDeleteComment: (commentId: string) => void
+  currentUserId: WorkspaceMember["id"]
+  onUpdateIssue: (
+    issueId: WorkspaceIssue["id"],
+    patch: Partial<WorkspaceIssue>
+  ) => void
+  onArchiveIssue: (issueId: WorkspaceIssue["id"]) => void
+  onAddComment: (
+    issueId: WorkspaceIssue["id"],
+    userId: WorkspaceMember["id"],
+    body: string
+  ) => void
+  onUpdateComment: (commentId: WorkspaceComment["id"], body: string) => void
+  onDeleteComment: (commentId: WorkspaceComment["id"]) => void
 }) {
   if (!issue) {
     return null
@@ -1510,6 +1562,7 @@ function IssueDetailDialogContent({
   milestones,
   cycles,
   comments,
+  currentUserId,
   onUpdateIssue,
   onArchiveIssue,
   onAddComment,
@@ -1525,11 +1578,19 @@ function IssueDetailDialogContent({
   milestones: WorkspaceMilestone[]
   cycles: WorkspaceCycle[]
   comments: WorkspaceComment[]
-  onUpdateIssue: (issueId: string, patch: Partial<WorkspaceIssue>) => void
-  onArchiveIssue: (issueId: string) => void
-  onAddComment: (issueId: string, userId: string, body: string) => void
-  onUpdateComment: (commentId: string, body: string) => void
-  onDeleteComment: (commentId: string) => void
+  currentUserId: WorkspaceMember["id"]
+  onUpdateIssue: (
+    issueId: WorkspaceIssue["id"],
+    patch: Partial<WorkspaceIssue>
+  ) => void
+  onArchiveIssue: (issueId: WorkspaceIssue["id"]) => void
+  onAddComment: (
+    issueId: WorkspaceIssue["id"],
+    userId: WorkspaceMember["id"],
+    body: string
+  ) => void
+  onUpdateComment: (commentId: WorkspaceComment["id"], body: string) => void
+  onDeleteComment: (commentId: WorkspaceComment["id"]) => void
 }) {
   const [titleDraft, setTitleDraft] = useState(issue.title)
   const [descriptionDraft, setDescriptionDraft] = useState(issue.description)
@@ -1571,9 +1632,10 @@ function IssueDetailDialogContent({
     { value: "none", label: "Backlog" },
     ...cycles.map((cycle) => ({
       value: cycle.id,
-      label: `Cycle ${cycle.number} (${cycle.status})`,
+      label: `Cycle ${cycle.number} (${CYCLE_STATUS_LABELS[cycle.status]})`,
     })),
   ]
+  const cycleById = new Map(cycles.map((cycle) => [cycle.id, cycle]))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1772,7 +1834,7 @@ function IssueDetailDialogContent({
                           return
                         }
 
-                        onAddComment(issue.id, members[0]?.id ?? issue.creatorId, commentDraft)
+                        onAddComment(issue.id, currentUserId, commentDraft)
                         setCommentDraft("")
                       }}
                       disabled={Boolean(editingCommentId)}
@@ -1793,7 +1855,9 @@ function IssueDetailDialogContent({
               <InlineSelect
                 label="Status"
                 value={issue.statusId}
-                onValueChange={(value) => onUpdateIssue(issue.id, { statusId: value })}
+                onValueChange={(value) =>
+                  onUpdateIssue(issue.id, { statusId: value as IssueStatus["id"] })
+                }
                 options={statuses.map((status) => ({
                   value: status.id,
                   label: status.name,
@@ -1803,7 +1867,10 @@ function IssueDetailDialogContent({
                 label="Assignee"
                 value={issue.assigneeId ?? "none"}
                 onValueChange={(value) =>
-                  onUpdateIssue(issue.id, { assigneeId: value === "none" ? null : value })
+                  onUpdateIssue(issue.id, {
+                    assigneeId:
+                      value === "none" ? null : (value as WorkspaceMember["id"]),
+                  })
                 }
                 options={memberOptions}
               />
@@ -1812,7 +1879,8 @@ function IssueDetailDialogContent({
                 value={issue.projectId ?? "none"}
                 onValueChange={(value) =>
                   onUpdateIssue(issue.id, {
-                    projectId: value === "none" ? null : value,
+                    projectId:
+                      value === "none" ? null : (value as WorkspaceProject["id"]),
                     milestoneId: null,
                   })
                 }
@@ -1822,7 +1890,12 @@ function IssueDetailDialogContent({
                 label="Milestone"
                 value={issue.milestoneId ?? "none"}
                 onValueChange={(value) =>
-                  onUpdateIssue(issue.id, { milestoneId: value === "none" ? null : value })
+                  onUpdateIssue(issue.id, {
+                    milestoneId:
+                      value === "none"
+                        ? null
+                        : (value as WorkspaceMilestone["id"]),
+                  })
                 }
                 options={milestoneOptions}
               />
@@ -1830,7 +1903,9 @@ function IssueDetailDialogContent({
                 label="Cycle"
                 value={issue.cycleId ?? "none"}
                 onValueChange={(value) =>
-                  onUpdateIssue(issue.id, { cycleId: value === "none" ? null : value })
+                  onUpdateIssue(issue.id, {
+                    cycleId: value === "none" ? null : (value as WorkspaceCycle["id"]),
+                  })
                 }
                 options={cycleOptions}
               />
@@ -1867,7 +1942,7 @@ function IssueDetailDialogContent({
                     <div key={`${entry.fromCycleId}-${entry.movedAt}`} className="border border-border bg-background p-3">
                       <div className="font-medium">Carry-over</div>
                       <div className="text-muted-foreground">
-                        {entry.fromCycleId} → {entry.toCycleId}
+                        {`Cycle ${cycleById.get(entry.fromCycleId)?.number ?? "?"} → Cycle ${cycleById.get(entry.toCycleId)?.number ?? "?"}`}
                       </div>
                       <div className="text-muted-foreground">
                         {formatDate(entry.movedAt, "MMM d, HH:mm")}
@@ -1910,6 +1985,7 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
     workspace,
     currentCycle,
     statusById,
+    isLoading,
     createIssue,
     updateIssue,
     archiveIssue,
@@ -1926,28 +2002,32 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
   const [newProjectOpen, setNewProjectOpen] = useState(false)
   const [newMilestoneOpen, setNewMilestoneOpen] = useState(false)
   const [closeCycleOpen, setCloseCycleOpen] = useState(false)
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null)
+  const [selectedIssueId, setSelectedIssueId] = useState<WorkspaceIssue["id"] | null>(null)
   const [issueView, setIssueView] = useState<IssueViewKey>("list")
   const [issueScope, setIssueScope] = useState<IssueScope>("all")
   const [sortKey, setSortKey] = useState<SortKey>("updated")
   const [search, setSearch] = useState("")
   const deferredSearch = useDeferredValue(search)
   const section = getSection(location.pathname, tenant.slug)
-  const issues = workspace.issues.filter((issue) => !issue.deletedAt)
-  const startedStatus = workspace.statuses.find((status) => status.type === "unstarted")
+  const issues = useMemo(
+    () => workspace?.issues.filter((issue) => !issue.deletedAt) ?? [],
+    [workspace?.issues]
+  )
+  const startedStatus = workspace?.statuses.find(
+    (status) => status.type === "unstarted"
+  )
   const projectById = useMemo(
-    () => new Map(workspace.projects.map((project) => [project.id, project])),
-    [workspace.projects]
+    () => new Map((workspace?.projects ?? []).map((project) => [project.id, project])),
+    [workspace?.projects]
   )
   const selectedIssue =
     issues.find((issue) => issue.id === selectedIssueId) ?? null
-  const selectedIssueComments = workspace.comments
+  const selectedIssueComments = (workspace?.comments ?? [])
     .filter((comment) => comment.issueId === selectedIssueId)
     .sort(
       (left, right) =>
         parseISO(left.createdAt).getTime() - parseISO(right.createdAt).getTime()
     )
-
   const filteredIssues = useMemo(() => {
     const nextIssues = issues.filter((issue) => {
       if (issueScope === "current" && issue.cycleId !== currentCycle?.id) {
@@ -1988,6 +2068,23 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
       return parseISO(right.updatedAt).getTime() - parseISO(left.updatedAt).getTime()
     })
   }, [currentCycle?.id, deferredSearch, issueScope, issues, projectById, sortKey])
+
+  if (isLoading || !workspace) {
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background px-6 py-10">
+        <Card className="w-full max-w-md border border-border/70">
+          <CardHeader>
+            <CardTitle>Preparing workspace</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Bootstrapping statuses, cycles, and workspace data.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const openIssuesCount = issues.filter((issue) => {
     const type = statusById.get(issue.statusId)?.type
@@ -2160,7 +2257,7 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
                         onCycleChange={(issueId, cycleId) =>
                           updateIssue(issueId, { cycleId })
                         }
-                        onOpenIssue={setSelectedIssueId}
+                        onOpenIssue={(issueId) => setSelectedIssueId(issueId)}
                       />
                     ) : (
                       <IssueBoardView
@@ -2173,7 +2270,7 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
                         onDropIssue={(issueId, statusId) =>
                           updateIssue(issueId, { statusId })
                         }
-                        onOpenIssue={setSelectedIssueId}
+                        onOpenIssue={(issueId) => setSelectedIssueId(issueId)}
                       />
                     )
                   ) : (
@@ -2267,7 +2364,6 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
           milestones={workspace.milestones}
           cycles={workspace.cycles}
           statuses={workspace.statuses}
-          currentMemberId={workspace.members[0]?.id ?? "member-dimas"}
           onCreate={createIssue}
         />
 
@@ -2312,6 +2408,7 @@ export function WorkspacePage({ tenant }: { tenant: WorkspaceTenant }) {
           milestones={workspace.milestones}
           cycles={workspace.cycles}
           comments={selectedIssueComments}
+          currentUserId={workspace.currentUserId}
           onUpdateIssue={updateIssue}
           onArchiveIssue={archiveIssue}
           onAddComment={addComment}

@@ -11,6 +11,8 @@
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
 import type * as tenants from "../tenants.js";
+import type * as workspace from "../workspace.js";
+import type * as workspaceBootstrap from "../workspaceBootstrap.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +24,8 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
   tenants: typeof tenants;
+  workspace: typeof workspace;
+  workspaceBootstrap: typeof workspaceBootstrap;
 }>;
 
 /**
